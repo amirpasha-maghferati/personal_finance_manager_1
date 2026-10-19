@@ -1,62 +1,39 @@
 from model.reminder import Reminder
 
-
 class ReminderService:
     def __init__(self):
-        self.reminders = []
+        self.__reminders = []
 
     def add_reminder(self, reminder):
         if not isinstance(reminder, Reminder):
-            raise TypeError("Invalid reminder object")
-
-        self.reminders.append(reminder)
+            raise TypeError("reminder must be a Reminder object.")
+        if self.find_reminder(reminder.get_reminder_id()) is not None:
+            raise ValueError("A reminder with this ID already exists.")
+        self.__reminders.append(reminder)
         return reminder
 
     def get_all_reminders(self):
-        return self.reminders
-
-    def get_due_reminders(self):
-        due_reminders = []
-
-        for reminder in self.reminders:
-            if reminder.check_reminder() == "Payment is due!":
-                due_reminders.append(reminder)
-
-        return due_reminders
-
-    def mark_as_paid(self, reminder_id):
-        for reminder in self.reminders:
-            if reminder.reminder_id == reminder_id:
-                reminder.mark_as_paid()
-                return True
-
-        return False
-
-
-
-
-
-
-
-
-
+        return list(self.__reminders)
 
     def find_reminder(self, reminder_id):
-        for reminder in self.reminders:
-            if reminder.reminder_id == reminder_id:
+        for reminder in self.__reminders:
+            if reminder.get_reminder_id() == reminder_id:
                 return reminder
-
         return None
+
+    def get_due_reminders(self, today=None):
+        return [item for item in self.__reminders if item.is_due(today)]
+
+    def mark_as_completed(self, reminder_id):
+        reminder = self.find_reminder(reminder_id)
+        if reminder is None:
+            return False
+        reminder.mark_as_completed()
+        return True
 
     def delete_reminder(self, reminder_id):
         reminder = self.find_reminder(reminder_id)
-
         if reminder is None:
             return False
-
-        self.reminders.remove(reminder)
+        self.__reminders.remove(reminder)
         return True
-
-
-
-

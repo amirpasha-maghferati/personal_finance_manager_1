@@ -1,78 +1,60 @@
 from model.transaction import Transaction
 
-
 class TransactionService:
     def __init__(self):
-        self.transactions = []
+        self.__transactions = []
 
     def add_transaction(self, transaction):
         if not isinstance(transaction, Transaction):
-            raise TypeError("Invalid transaction object")
-
-        self.transactions.append(transaction)
+            raise TypeError("transaction must be a Transaction, Income, or Expense object.")
+        if self.find_transaction(transaction.get_transaction_id()) is not None:
+            raise ValueError("A transaction with this ID already exists.")
+        self.__transactions.append(transaction)
         return transaction
 
     def get_all_transactions(self):
-        return self.transactions
+        return list(self.__transactions)
 
     def find_transaction(self, transaction_id):
-        for transaction in self.transactions:
-            if transaction.transaction_id == transaction_id:
+        for transaction in self.__transactions:
+            if transaction.get_transaction_id() == transaction_id:
                 return transaction
-
         return None
 
     def delete_transaction(self, transaction_id):
         transaction = self.find_transaction(transaction_id)
-
         if transaction is None:
             return False
+        self.__transactions.remove(transaction)
+        return True
 
-        self.transactions.remove(transaction)
+    def update_transaction(self, transaction_id, amount=None, transaction_type=None,
+                           category_id=None, description=None):
+        transaction = self.find_transaction(transaction_id)
+        if transaction is None:
+            return False
+        # Validate every requested field before mutating the original object.
+        checked = Transaction(
+            transaction_id,
+            transaction.get_amount() if amount is None else amount,
+            transaction.get_transaction_type() if transaction_type is None else transaction_type,
+            transaction.get_category_id() if category_id is None else category_id,
+            transaction.get_description() if description is None else description,
+            transaction.get_created_at()
+        )
+        transaction.set_amount(checked.get_amount())
+        transaction.set_transaction_type(checked.get_transaction_type())
+        transaction.set_category_id(checked.get_category_id())
+        transaction.set_description(checked.get_description())
         return True
 
     def calculate_balance(self):
-        balance = 0
+        return sum(item.get_signed_amount() for item in self.__transactions)
 
-        for transaction in self.transactions:
-            if transaction.transaction_type == "income":
-                balance += transaction.amount
-            elif transaction.transaction_type == "expense":
-                balance -= transaction.amount
+    def calculate_total_income(self):
+        return sum(item.get_amount() for item in self.__transactions
+                   if item.get_transaction_type() == "income")
 
-        return balance
-
-
-
-
-
-
-
-
-
-    def update_transaction(
-        self,
-        transaction_id,
-        new_amount,
-        new_type,
-        new_category_id,
-        new_description
-    ):
-        transaction = self.find_transaction(transaction_id)
-
-        if transaction is None:
-            return False
-
-        if float(new_amount) <= 0:
-            raise ValueError("Amount must be positive!")
-
-        if new_type not in ["income", "expense"]:
-            raise ValueError("Invalid transaction type!")
-
-        transaction.amount = float(new_amount)
-        transaction.transaction_type = new_type
-        transaction.category_id = new_category_id
-        transaction.description = new_description
-
-        return True
-
+    def calculate_total_expenses(self):
+        return sum(item.get_amount() for item in self.__transactions
+                   if item.get_transaction_type() == "expense")
