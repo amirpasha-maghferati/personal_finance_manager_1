@@ -31,6 +31,10 @@ class ReminderService:
         reminder.mark_as_completed()
         return True
 
+    # Backward-compatible alias for older code that calls reminders "paid".
+    def mark_as_paid(self, reminder_id):
+        return self.mark_as_completed(reminder_id)
+
     def delete_reminder(self, reminder_id):
         reminder = self.find_reminder(reminder_id)
         if reminder is None:

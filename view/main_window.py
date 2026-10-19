@@ -121,8 +121,254 @@ class MainWindow:
         return tree
 
     def show_transactions(self):
-        self._page_header("تراکنش‌ها", "فهرست تراکنش‌های ثبت‌شده در همین اجرا")
-        self._transaction_table(self.content)
+        self._page_header(
+            "تراکنش‌ها",
+            "جست‌وجو و فیلتر کن؛ برای ویرایش یا حذف، یک تراکنش را از جدول انتخاب کن."
+        )
+
+        # نوار جست‌وجو و فیلترها
+        filters = tk.Frame(self.content, bg="#f3f5f9")
+        filters.pack(fill="x", padx=28, pady=(0, 8))
+
+        search_var = tk.StringVar()
+        type_var = tk.StringVar(value="همه")
+        category_var = tk.StringVar(value="همه")
+        sort_var = tk.StringVar(value="جدیدترین")
+
+        tk.Label(filters, text="جست‌وجو", bg="#f3f5f9", font=("Tahoma", 9)).grid(
+            row=0, column=0, padx=4, pady=5
+        )
+        search_entry = ttk.Entry(filters, textvariable=search_var, width=22, justify="right")
+        search_entry.grid(row=0, column=1, padx=4, pady=5)
+
+        tk.Label(filters, text="نوع", bg="#f3f5f9", font=("Tahoma", 9)).grid(
+            row=0, column=2, padx=4, pady=5
+        )
+        type_box = ttk.Combobox(
+            filters, textvariable=type_var,
+            values=("همه", "درآمد", "هزینه"), state="readonly", width=9,
+            justify="right"
+        )
+        type_box.grid(row=0, column=3, padx=4, pady=5)
+
+        tk.Label(filters, text="دسته‌بندی", bg="#f3f5f9", font=("Tahoma", 9)).grid(
+            row=0, column=4, padx=4, pady=5
+        )
+        category_choices = ["همه"] + [
+            f"{x.get_category_id()} | {x.get_name()}"
+            for x in self.category_controller.get_all_categories()
+        ]
+        category_box = ttk.Combobox(
+            filters, textvariable=category_var, values=category_choices,
+            state="readonly", width=18, justify="right"
+        )
+        category_box.grid(row=0, column=5, padx=4, pady=5)
+
+        tk.Label(filters, text="مرتب‌سازی", bg="#f3f5f9", font=("Tahoma", 9)).grid(
+            row=0, column=6, padx=4, pady=5
+        )
+        sort_box = ttk.Combobox(
+            filters, textvariable=sort_var,
+            values=("جدیدترین", "قدیمی‌ترین", "بیشترین مبلغ", "کمترین مبلغ"),
+            state="readonly", width=13, justify="right"
+        )
+        sort_box.grid(row=0, column=7, padx=4, pady=5)
+
+        panel = tk.Frame(self.content, bg="white", highlightbackground="#dce2ec", highlightthickness=1)
+        panel.pack(fill="both", expand=True, padx=28, pady=8)
+        columns = ("id", "date", "description", "category", "type", "amount")
+        tree = ttk.Treeview(panel, columns=columns, show="headings", selectmode="browse")
+        headers = {
+            "id": "شناسه", "date": "تاریخ", "description": "شرح",
+            "category": "دسته‌بندی", "type": "نوع", "amount": "مبلغ"
+        }
+        widths = {"id": 55, "date": 130, "description": 210, "category": 150, "type": 90, "amount": 130}
+        for col in columns:
+            tree.heading(col, text=headers[col])
+            tree.column(col, width=widths[col], anchor="center")
+        tree.pack(fill="both", expand=True, padx=10, pady=10)
+
+        result_label = tk.Label(self.content, text="", bg="#f3f5f9", fg="#65718a",
+                                font=("Tahoma", 9), anchor="e")
+        result_label.pack(fill="x", padx=30, pady=(0, 3))
+
+        def refresh_table(*_):
+            for row in tree.get_children():
+                tree.delete(row)
+
+            transactions = list(self.transaction_controller.get_all_transactions())
+            query = search_var.get().strip().casefold()
+            selected_type = type_var.get()
+            selected_category = category_var.get()
+
+            if query:
+                transactions = [
+                    item for item in transactions
+                    if query in str(item.get_description()).casefold()
+                    or query in str(item.get_transaction_id()).casefold()
+                ]
+
+            if selected_type == "درآمد":
+                transactions = [item for item in transactions if item.get_transaction_type() == "income"]
+            elif selected_type == "هزینه":
+                transactions = [item for item in transactions if item.get_transaction_type() == "expense"]
+
+            if selected_category != "همه":
+                selected_category_id = selected_category.split("|", 1)[0].strip()
+                transactions = [
+                    item for item in transactions
+                    if str(item.get_category_id()) == selected_category_id
+                ]
+
+            if sort_var.get() == "جدیدترین":
+                transactions.sort(key=lambda item: item.get_created_at(), reverse=True)
+            elif sort_var.get() == "قدیمی‌ترین":
+                transactions.sort(key=lambda item: item.get_created_at())
+            elif sort_var.get() == "بیشترین مبلغ":
+                transactions.sort(key=lambda item: item.get_amount(), reverse=True)
+            elif sort_var.get() == "کمترین مبلغ":
+                transactions.sort(key=lambda item: item.get_amount())
+
+            for item in transactions:
+                category = self.category_controller.find_category(item.get_category_id())
+                if category is None:
+                    try:
+                        category = self.category_controller.find_category(int(item.get_category_id()))
+                    except (ValueError, TypeError):
+                        category = None
+                category_name = category.get_name() if category else str(item.get_category_id())
+                type_name = "درآمد" if item.get_transaction_type() == "income" else "هزینه"
+                tree.insert("", "end", values=(
+                    item.get_transaction_id(),
+                    item.get_created_at().strftime("%Y-%m-%d %H:%M"),
+                    item.get_description(), category_name, type_name,
+                    f"{item.get_amount():,.0f}"
+                ))
+
+            result_label.config(text=f"تعداد نتایج: {len(transactions)}")
+
+        def clear_filters():
+            search_var.set("")
+            type_var.set("همه")
+            category_var.set("همه")
+            sort_var.set("جدیدترین")
+            refresh_table()
+
+        def selected_id():
+            selected = tree.selection()
+            if not selected:
+                messagebox.showwarning("انتخاب تراکنش", "ابتدا یک تراکنش را از جدول انتخاب کن.", parent=self.root)
+                return None
+            return tree.item(selected[0], "values")[0]
+
+        def edit_selected():
+            item_id = selected_id()
+            if item_id is None:
+                return
+            item = self.transaction_controller.find_transaction(item_id)
+            if item is None:
+                try:
+                    item = self.transaction_controller.find_transaction(int(item_id))
+                except (ValueError, TypeError):
+                    item = None
+            if item is None:
+                messagebox.showerror("خطا", "تراکنش پیدا نشد.", parent=self.root)
+                refresh_table()
+                return
+
+            dialog = tk.Toplevel(self.root)
+            dialog.title("ویرایش تراکنش")
+            dialog.geometry("430x360")
+            dialog.transient(self.root)
+            dialog.grab_set()
+            dialog.configure(bg="#f3f5f9")
+            tk.Label(dialog, text=f"ویرایش تراکنش شماره {item_id}", bg="#f3f5f9", fg="#172238",
+                     font=("Tahoma", 13, "bold")).pack(pady=14)
+            form = tk.Frame(dialog, bg="white")
+            form.pack(fill="both", expand=True, padx=18, pady=8)
+            amount_var = tk.StringVar(value=str(item.get_amount()))
+            type_var_edit = tk.StringVar(value=item.get_transaction_type())
+            category_var_edit = tk.StringVar()
+            description_var = tk.StringVar(value=item.get_description())
+
+            tk.Label(form, text="مبلغ", bg="white", font=("Tahoma", 9)).grid(row=0, column=1, padx=10, pady=9, sticky="e")
+            ttk.Entry(form, textvariable=amount_var, justify="right").grid(row=0, column=0, padx=10, pady=9, sticky="ew")
+            tk.Label(form, text="نوع تراکنش", bg="white", font=("Tahoma", 9)).grid(row=1, column=1, padx=10, pady=9, sticky="e")
+            type_box_edit = ttk.Combobox(form, textvariable=type_var_edit, values=("income", "expense"), state="readonly", justify="right")
+            type_box_edit.grid(row=1, column=0, padx=10, pady=9, sticky="ew")
+            tk.Label(form, text="دسته‌بندی", bg="white", font=("Tahoma", 9)).grid(row=2, column=1, padx=10, pady=9, sticky="e")
+            category_box_edit = ttk.Combobox(form, textvariable=category_var_edit, state="readonly", justify="right")
+            category_box_edit.grid(row=2, column=0, padx=10, pady=9, sticky="ew")
+            tk.Label(form, text="شرح", bg="white", font=("Tahoma", 9)).grid(row=3, column=1, padx=10, pady=9, sticky="e")
+            ttk.Entry(form, textvariable=description_var, justify="right").grid(row=3, column=0, padx=10, pady=9, sticky="ew")
+            form.grid_columnconfigure(0, weight=1)
+
+            def refresh_edit_categories():
+                choices = []
+                for category in self.category_controller.get_all_categories():
+                    if category.get_category_type() in (type_var_edit.get(), "both"):
+                        choices.append(f"{category.get_category_id()} | {category.get_name()}")
+                category_box_edit["values"] = choices
+                current = next(
+                    (choice for choice in choices
+                     if choice.split("|", 1)[0].strip() == str(item.get_category_id())),
+                    None
+                )
+                category_var_edit.set(current or (choices[0] if choices else ""))
+
+            type_box_edit.bind("<<ComboboxSelected>>", lambda event: refresh_edit_categories())
+            refresh_edit_categories()
+
+            def save_changes():
+                try:
+                    amount = float(amount_var.get().replace(",", "").strip())
+                    if amount <= 0:
+                        raise ValueError("مبلغ باید بیشتر از صفر باشد.")
+                    if not category_var_edit.get():
+                        raise ValueError("برای این نوع تراکنش دسته‌بندی مناسبی وجود ندارد.")
+                    category_id = int(category_var_edit.get().split("|", 1)[0].strip())
+                    self.transaction_controller.update_transaction(
+                        item_id, amount=amount, transaction_type=type_var_edit.get(),
+                        category_id=category_id, description=description_var.get().strip()
+                    )
+                except (ValueError, TypeError) as error:
+                    messagebox.showerror("خطا در ویرایش", str(error), parent=dialog)
+                    return
+                dialog.destroy()
+                refresh_table()
+                messagebox.showinfo("موفق", "تراکنش با موفقیت ویرایش شد.", parent=self.root)
+
+            tk.Button(form, text="ذخیره تغییرات", command=save_changes, bg="#2463eb", fg="white",
+                      relief="flat", padx=14, pady=8, font=("Tahoma", 10, "bold")).grid(
+                          row=4, column=0, padx=10, pady=14, sticky="e"
+                      )
+
+        def delete_selected():
+            item_id = selected_id()
+            if item_id is None:
+                return
+            if not messagebox.askyesno("تأیید حذف", f"تراکنش شماره {item_id} حذف شود؟", parent=self.root):
+                return
+            if self.transaction_controller.delete_transaction(item_id):
+                refresh_table()
+                messagebox.showinfo("موفق", "تراکنش حذف شد و موجودی و گزارش‌ها از داده‌های فعلی محاسبه می‌شوند.", parent=self.root)
+            else:
+                messagebox.showerror("خطا", "تراکنش پیدا نشد.", parent=self.root)
+
+        actions = tk.Frame(self.content, bg="#f3f5f9")
+        actions.pack(fill="x", padx=28, pady=(0, 8))
+        tk.Button(actions, text="ویرایش انتخاب‌شده", command=edit_selected, bg="#2463eb", fg="white",
+                  relief="flat", padx=14, pady=8, font=("Tahoma", 10, "bold")).pack(side="right", padx=4)
+        tk.Button(actions, text="حذف انتخاب‌شده", command=delete_selected, bg="#b93838", fg="white",
+                  relief="flat", padx=14, pady=8, font=("Tahoma", 10, "bold")).pack(side="right", padx=4)
+        tk.Button(actions, text="پاک‌کردن فیلترها", command=clear_filters, relief="flat",
+                  padx=14, pady=8, font=("Tahoma", 9)).pack(side="left", padx=4)
+
+        search_entry.bind("<KeyRelease>", refresh_table)
+        type_box.bind("<<ComboboxSelected>>", refresh_table)
+        category_box.bind("<<ComboboxSelected>>", refresh_table)
+        sort_box.bind("<<ComboboxSelected>>", refresh_table)
+        refresh_table()
 
     def show_add_transaction(self):
         self._page_header("ثبت تراکنش", "مبلغ باید مثبت باشد؛ نوع تراکنش موجودی را تغییر می‌دهد.")
